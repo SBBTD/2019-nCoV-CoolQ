@@ -1,4 +1,4 @@
-module github.com/Tnze/CoolQ-Golang-Plugin
+module github.com/SBBTD/2019-nCoV-CoolQ
 
 go 1.13
 
