@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+type dwz struct {
+	Code     int    `json:"Code"`
+	ShortUrl string `json:"ShortUrl"`
+	LongUrl  string `json:"LongUrl"`
+	ErrMsg   string `json:"ErrMsg"`
+}
+
 type news struct {
 	Id           int    `json:"id"`
 	PubDate      int64  `json:"pubDate"`
@@ -94,15 +101,44 @@ func refresh(f bool) {
 			nCoVnews = nCoVnews1
 			first = false
 		} else {
-			cqp.AddLog(cqp.Info, "结果", "刷新"+string(len(nCoVnews1))+"条")
+			cqp.AddLog(cqp.Info, "结果", "刷新"+strconv.Itoa(len(nCoVnews1))+"条")
 			for _, a := range nCoVnews1 {
 				if !isIn(nCoVnews, a) {
-					cqp.SendGroupMsg(group, "2019-nCoV最新消息\n"+a.Title+"\n"+a.PubDateStr+"  "+a.Summary+"\n地区:"+a.ProvinceName+"\nVia:"+a.InfoSource+"\n详情"+a.SourceUrl)
+					msg := "[" + strings.ReplaceAll(a.ProvinceName, "省", "") + "]" + a.Title + "\nVia:" + a.InfoSource + ", " + a.PubDateStr + "\n"
+					if a.ProvinceName == "湖北省" || a.ProvinceName == "黑龙江省" {
+						msg += a.Summary + "\n"
+					}
+					msg += tryGetShortURL(a.SourceUrl)
+					cqp.SendGroupMsg(group, msg)
 					nCoVnews = append(nCoVnews, a)
 				}
 			}
 		}
 	}
+}
+
+func tryGetShortURL(lurl string) string {
+	appkey := "" //TODO get from https://dwz.cn/
+	bdurl := "https://dwz.cn/admin/v2/create"
+	postData := strings.NewReader(`{"Url":"` + lurl + `","TermOfValidity":"1-year"}`)
+	var dwzResp dwz
+	client := &http.Client{}
+	req, err := http.NewRequest(http.MethodPost, bdurl, postData)
+	if err != nil {
+		return lurl
+	}
+	req.Header.Add("Token", appkey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return lurl
+	}
+	respStr, err := ioutil.ReadAll(resp.Body)
+	err = resp.Body.Close()
+	err = json.Unmarshal(respStr, &dwzResp)
+	if err != nil {
+		return lurl
+	}
+	return dwzResp.ShortUrl
 }
 
 func isIn(s []news, a news) bool {
