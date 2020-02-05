@@ -34,10 +34,14 @@ type news struct {
 }
 
 var (
-	group    int64 = 683750159
-	first    bool  = true
-	enabled  bool  = true
+	group1   int64  = 683750159
+	mainUrl  string = `http://t.cn/A6PfX4tm`
+	first    bool   = true
+	enabled  bool   = true
 	nCoVnews []news
+	msg      string = ""
+	no       int    = 1
+	ticks    int    = 0
 )
 
 //go:generate cqcfg -c .
@@ -56,7 +60,7 @@ func init() {
 
 func onEnable() int32 {
 	enabled = true
-	cqp.AddLog(cqp.Info, "启动", "群号："+strconv.FormatInt(group, 10))
+	cqp.AddLog(cqp.Info, "启动", "群号："+strconv.FormatInt(group1, 10))
 	go check()
 	return 0
 }
@@ -71,15 +75,16 @@ func check() {
 	for {
 		if enabled {
 			refresh(first)
+			ticks += 1
 		}
-		time.Sleep(30 * time.Second)
+		time.Sleep(1 * time.Minute)
 	}
 }
 
 func refresh(f bool) {
 	cqp.AddLog(cqp.Info, "刷新", "刷新2019-nCov信息...")
 	var nCoVnews1 []news
-	r, err := http.Get("https://3g.dxy.cn/newh5/view/pneumonia")
+	r, err := http.Get("https://ncov.dxy.cn/ncovh5/view/pneumonia_timeline")
 	if err == nil && r != nil {
 		b, err := ioutil.ReadAll(r.Body)
 		r.Body.Close()
@@ -103,15 +108,24 @@ func refresh(f bool) {
 		} else {
 			cqp.AddLog(cqp.Info, "结果", "刷新"+strconv.Itoa(len(nCoVnews1))+"条")
 			for _, a := range nCoVnews1 {
+				/*if strings.Contains(a.Title, "新增") && strings.Contains(a.Title, "确诊") && !strings.Contains(a.Title, "首例") {
+					continue
+				}*/
 				if !isIn(nCoVnews, a) {
-					msg := "[" + strings.ReplaceAll(a.ProvinceName, "省", "") + "]" + a.Title + "\nVia:" + a.InfoSource + ", " + a.PubDateStr + "\n"
-					if a.ProvinceName == "湖北省" || a.ProvinceName == "黑龙江省" {
+					msg += strconv.Itoa(no) + "." + strings.ReplaceAll(strings.ReplaceAll(a.Title, "，", ","), "！", "!") + "-" + a.InfoSource + "\n"
+					no += 1
+					/*if a.ProvinceName == "湖北省" || a.ProvinceName == "黑龙江省" {
 						msg += a.Summary + "\n"
-					}
-					msg += tryGetShortURL(a.SourceUrl)
-					cqp.SendGroupMsg(group, msg)
+					}*/
 					nCoVnews = append(nCoVnews, a)
 				}
+			}
+			if no > 15 || (no > 1 && ticks >= 300) {
+				msg += "详情:" + mainUrl
+				cqp.SendGroupMsg(group1, msg)
+				msg = ""
+				no = 1
+				ticks = 0
 			}
 		}
 	}
@@ -125,18 +139,21 @@ func tryGetShortURL(lurl string) string {
 	client := &http.Client{}
 	req, err := http.NewRequest(http.MethodPost, bdurl, postData)
 	if err != nil {
-		return lurl
+		return mainUrl
 	}
 	req.Header.Add("Token", appkey)
 	resp, err := client.Do(req)
 	if err != nil {
-		return lurl
+		return mainUrl
 	}
 	respStr, err := ioutil.ReadAll(resp.Body)
 	err = resp.Body.Close()
 	err = json.Unmarshal(respStr, &dwzResp)
 	if err != nil {
-		return lurl
+		return mainUrl
+	}
+	if dwzResp.Code != 0 {
+		return mainUrl
 	}
 	return dwzResp.ShortUrl
 }
@@ -151,7 +168,7 @@ func isIn(s []news, a news) bool {
 }
 
 func onGroupMsg(subType, msgID int32, fromGroup, fromQQ int64, fromAnonymous, msg string, font int32) int32 {
-	if fromGroup != group {
+	if fromGroup != group1 {
 		return 0
 	}
 	if msg == "开启追踪" {
